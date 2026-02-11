@@ -1,0 +1,34 @@
+project:
+  name: "Sample Project"
+  version: "1.0"
+
+input:
+  excel_file: "Data/sample_data.xlsx"
+  text_sheet:
+    name: "Text"
+    required_columns: ["ID", "HoTen", "SoHD"]
+  config_sheet:
+    name: "Config"
+
+template:
+  file: "Template/template_manual.docx"
+  delimiter:
+    start: "<<"
+    end: ">>"
+
+output:
+  folder: "Output/"
+  template_prefix_mode: true
+  filename_pattern: "{HoTen}_{SoHD}"
+  suffix: ".docx"
+  overwrite: true
+  sanitize_filename: true
+
+processing:
+  skip_empty_rows: true
+  fail_fast: false
+  max_workers: 1
+
+logging:
+  level: "INFO"
+  console: true

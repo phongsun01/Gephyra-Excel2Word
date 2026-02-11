@@ -1,0 +1,16 @@
+pandas
+openpyxl>=3.0.0
+python-docx>=0.8.11
+PyYAML>=6.0
+lxml>=4.9.0
+tqdm
+
+# GUI
+tk
+# Note: tkinter is usually built-in with Python, but listed here for completeness/linux check
+flet>=0.25.0
+
+# Development
+pytest==7.4.3
+pytest-cov==4.1.0
+pyinstaller==6.3.0
