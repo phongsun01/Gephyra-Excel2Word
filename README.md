@@ -15,6 +15,10 @@
 - **Table Support**: Automatically populate tables in Word from Excel ranges.
 - **Dynamic Filenames**: Generate filenames based on data (e.g., `Contract-NguyenVanA-HD001.docx`).
 
+## ⚙️ System Requirements
+- **Operating System:** Windows 10 or later (Required for COM Automation).
+- **Microsoft Office:** Word & Excel installed (2016 or newer recommended).
+
 ## 🛠️ Installation
 
 1.  **Install Python 3.10+**
@@ -22,6 +26,12 @@
     ```bash
     pip install -r requirements.txt
     ```
+3.  **Configure System (Critical)**:
+    Run the post-install script to register COM components:
+    ```bash
+    python Scripts/pywin32_postinstall.py -install
+    ```
+    *Note: If script not found, locate it in your Python `Scripts` folder.*
 
 ## 🏃 Usage
 

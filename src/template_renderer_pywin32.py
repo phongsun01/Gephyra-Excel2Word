@@ -24,17 +24,26 @@ class TemplateRenderer:
     - Robust cleanup (no zombie processes)
     """
     
-    def __init__(self, template_path: str):
-        """Initialize renderer with template."""
+    def __init__(self, template_path: str, word_app=None, excel_app=None):
+        """
+        Initialize renderer with template.
+        
+        Args:
+            template_path: Path to template file
+            word_app: Optional pre-initialized Word.Application instance
+            excel_app: Optional pre-initialized Excel.Application instance
+        """
         self.template_path = Path(template_path)
         if not self.template_path.exists():
             raise FileNotFoundError(f"Template not found: {self.template_path}")
         
-        self.word = None
-        self.excel = None
+        self.word = word_app
+        self.excel = excel_app
         self.doc = None
         self._initialized = False
         self._original_thread_id = None
+        self._shared_word = bool(word_app)
+        self._shared_excel = bool(excel_app)
         
         # Register cleanup
         atexit.register(self.cleanup)
@@ -51,11 +60,18 @@ class TemplateRenderer:
             pass # Already initialized
             
         try:
-            # Create Word instance
-            self.word = win32com.client.Dispatch("Word.Application")
-            self.word.Visible = False
-            self.word.DisplayAlerts = 0  # wdAlertsNone
-            logger.debug("Word.Application initialized")
+            # Create Word instance if not provided
+            if not self.word:
+                self.word = win32com.client.Dispatch("Word.Application")
+                try:
+                    self.word.Visible = False
+                    self.word.DisplayAlerts = 0  # wdAlertsNone
+                except Exception as e:
+                    logger.warning(f"Could not set Word visibility: {e}")
+                logger.debug("Word.Application initialized (new instance)")
+            else:
+                 logger.debug("Word.Application initialized (shared instance)")
+                 
             self._initialized = True
         except Exception as e:
             logger.error(f"COM Init Error: {e}")
@@ -170,8 +186,12 @@ class TemplateRenderer:
         try:
             if not self.excel:
                 self.excel = win32com.client.Dispatch("Excel.Application")
-                self.excel.Visible = False
-                self.excel.DisplayAlerts = False
+                try:
+                    self.excel.Visible = False
+                    self.excel.DisplayAlerts = False
+                except Exception as e:
+                    logger.warning(f"Could not set Excel visibility: {e}")
+                self._shared_excel = False # We created it, we own it
 
             # Open workbook
             wb = self.excel.Workbooks.Open(str(excel_path.absolute()), ReadOnly=True)
@@ -253,14 +273,14 @@ class TemplateRenderer:
                 self.doc = None
             
             # Quit applications
-            if self.word:
+            if self.word and not self._shared_word:
                 try:
                     self.word.Quit()
                 except:
                     pass
                 self.word = None
                 
-            if self.excel:
+            if self.excel and not self._shared_excel:
                 try:
                     self.excel.Quit()
                 except:
@@ -268,7 +288,9 @@ class TemplateRenderer:
                 self.excel = None
             
             # Uninitialize COM
-            if self._initialized:
+            # Only uninitialize if we are not sharing apps, or be smarter about it.
+            # If we shared apps, the caller owns the COM context.
+            if self._initialized and not (self._shared_word or self._shared_excel):
                 try:
                     pythoncom.CoUninitialize()
                 except:

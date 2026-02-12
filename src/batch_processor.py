@@ -3,6 +3,8 @@ from pathlib import Path
 from tqdm import tqdm
 from .excel_loader import ExcelLoader
 from .template_renderer_pywin32 import TemplateRenderer
+import win32com.client
+import pythoncom
 
 class BatchProcessor:
     def __init__(self, config_manager, logger=None):
@@ -45,11 +47,26 @@ class BatchProcessor:
         # Let's assume static range for now as per "BangTB | Table | A1:D20" example.
         
         template_path = self.config_manager.get_template_path()
-        renderer = TemplateRenderer(template_path)
-        # Note: New renderer currently supports <<key>> only. 
-        # Delimiter config from yaml is ignored for now to ensure reliability.
+        
+        # Performance Optimization: Reuse Word/Excel instances
+        word_app = None
+        excel_app = None
         
         try:
+            # Initialize COM for threading support
+            pythoncom.CoInitialize()
+            
+            # Start Word (Shared Instance)
+            word_app = win32com.client.Dispatch("Word.Application")
+            word_app.Visible = False
+            word_app.DisplayAlerts = 0
+            
+            # Start Excel (Shared Instance) - only if needed
+            if table_mappings:
+                excel_app = win32com.client.Dispatch("Excel.Application")
+                excel_app.Visible = False
+                excel_app.DisplayAlerts = False
+            
             # 3. Process Rows
             success_count = 0
             error_count = 0
@@ -60,6 +77,9 @@ class BatchProcessor:
             iterator = tqdm(rows, desc="Processing files") if rows else []
             
             for i, row in enumerate(iterator):
+                # Create renderer with shared apps
+                renderer = TemplateRenderer(template_path, word_app=word_app, excel_app=excel_app)
+                
                 try:
                     # Prepare Context (Text only)
                     context = row.copy()
@@ -93,14 +113,24 @@ class BatchProcessor:
                     if self.logger:
                         self.logger.log_error(f"Error row {i+1}: {str(e)}")
                     
-                    # Force cleanup on error to be safe? 
-                    # Actually render() handles doc close on error.
-                    
                     if self.config_manager.config.get('processing', {}).get('fail_fast', False):
+                        renderer.cleanup() # Cleanup before raising
                         raise e
+                finally:
+                    # Close document (but keep apps open)
+                    renderer.cleanup()
         finally:
-            # Ensure Word/Excel close after batch
-            renderer.cleanup()
+            # Quit Shared Apps at the very end
+            if word_app:
+                try: word_app.Quit()
+                except: pass
+            if excel_app:
+                try: excel_app.Quit() 
+                except: pass
+            try:
+                pythoncom.CoUninitialize()
+            except:
+                pass
 
         return success_count, error_count
 
