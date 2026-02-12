@@ -15,7 +15,7 @@ def main():
     
     args = parser.parse_args()
 
-    __version__ = "1.0.0"
+    from src import __version__
 
     # 1. Show Version
     if args.version:

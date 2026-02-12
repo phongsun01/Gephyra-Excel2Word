@@ -154,6 +154,7 @@ cython_debug/
 .vscode/
 
 # Project Specific
+.agent/
 *.log
 *_info.txt
 *_attrs.txt
