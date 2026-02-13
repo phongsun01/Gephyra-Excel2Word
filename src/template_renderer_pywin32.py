@@ -63,8 +63,10 @@ class TemplateRenderer:
             # Create Word instance if not provided
             if not self.word:
                 self.word = win32com.client.Dispatch("Word.Application")
+                
                 try:
-                    self.word.Visible = False
+                    # Debug: Try Visible=True to fix Find issue
+                    self.word.Visible = True
                     self.word.DisplayAlerts = 0  # wdAlertsNone
                 except Exception as e:
                     logger.warning(f"Could not set Word visibility: {e}")
@@ -110,11 +112,20 @@ class TemplateRenderer:
 
         try:
             # Open template
-            self.doc = self.word.Documents.Open(str(self.template_path.absolute()), ReadOnly=True)
+            # Revert to Open because Add failed to replace text in tests (unknown reason)
+            # repro_replace.py worked with Open, so let's stick to that pattern.
+            # Try ReadOnly=False to ensure we can edit.
+            self.doc = self.word.Documents.Open(str(self.template_path.absolute()), ReadOnly=False)
             logger.debug(f"Opened: {self.template_path}")
             
             # 1. Replace text placeholders
-            self._replace_text(text_context)
+            
+            # 1. Replace text placeholders
+            try:
+                self._replace_text(text_context)
+            except Exception as e:
+                logger.error(f"Replace text failed: {e}")
+                raise
             
             # 2. Insert tables (if any)
             if excel_path and table_mappings:
@@ -134,30 +145,49 @@ class TemplateRenderer:
     def _replace_text(self, context: Dict[str, str]) -> None:
         """Replace text placeholders using Word Find/Replace."""
         # Use Range instead of Selection for better stability
-        rng = self.doc.Content
-        find = rng.Find
-        
-        find.ClearFormatting()
-        find.Replacement.ClearFormatting()
-        
         for key, value in context.items():
             placeholder = f"<<{key}>>"
+            replace_val = str(value) if value is not None else ""
             
-            # Replace All
-            find.Execute(
-                FindText=placeholder,
-                ReplaceWith=str(value) if value is not None else "",
-                Replace=2,  # wdReplaceAll
-                Forward=True,
-                Wrap=1  # wdFindContinue
-            )
+            logger.debug(f"Attempting to replace: '{placeholder}' with '{replace_val}'")
             
-            # Also check headers/footers/textboxes (StoryRanges)
-            for story_range in self.doc.StoryRanges:
-                 find_story = story_range.Find
-                 find_story.Execute(
+            # --- Main Body Replacement ---
+            try:
+                # Reset range for each key to ensure we search the whole doc
+                rng = self.doc.Content
+                find = rng.Find
+                find.ClearFormatting()
+                find.Replacement.ClearFormatting()
+                
+                success = find.Execute(
                     FindText=placeholder,
-                    ReplaceWith=str(value) if value is not None else "",
+                    ReplaceWith=replace_val,
+                    Replace=2,  # wdReplaceAll
+                    Forward=True,
+                    Wrap=1  # wdFindContinue
+                )
+                
+                if success:
+                    logger.info(f"✅ Replaced {placeholder} in Main Body")
+                else:
+                    logger.warning(f"❌ Failed to find {placeholder} in Main Body")
+                    
+            except Exception as e:
+                logger.error(f"Error replacing {placeholder}: {e}")
+            
+            # --- Story Ranges (Headers, Footers, Text Boxes) ---
+            for story_range in self.doc.StoryRanges:
+                 # Skip main story (already done) to save time? 
+                 # wdMainTextStory = 1. But iterating StoryRanges usually yields distinct stories.
+                 # Just to be safe, search everything.
+                 
+                 find_story = story_range.Find
+                 find_story.ClearFormatting()
+                 find_story.Replacement.ClearFormatting()
+                 
+                 story_success = find_story.Execute(
+                    FindText=placeholder,
+                    ReplaceWith=replace_val,
                     Replace=2,
                     Forward=True,
                     Wrap=1
@@ -166,9 +196,12 @@ class TemplateRenderer:
                  while story_range.NextStoryRange:
                      story_range = story_range.NextStoryRange
                      find_next = story_range.Find
+                     find_next.ClearFormatting()
+                     find_next.Replacement.ClearFormatting()
+                     
                      find_next.Execute(
                         FindText=placeholder,
-                        ReplaceWith=str(value) if value is not None else "",
+                        ReplaceWith=replace_val,
                         Replace=2,
                         Forward=True,
                         Wrap=1
@@ -186,6 +219,7 @@ class TemplateRenderer:
         try:
             if not self.excel:
                 self.excel = win32com.client.Dispatch("Excel.Application")
+                    
                 try:
                     self.excel.Visible = False
                     self.excel.DisplayAlerts = False

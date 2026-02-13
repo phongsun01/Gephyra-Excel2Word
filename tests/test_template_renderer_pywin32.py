@@ -26,7 +26,11 @@ class TestTemplateRenderer(unittest.TestCase):
         print("\nTesting Text Replacement...")
         renderer = TemplateRenderer(self.template_path)
         try:
-            context = {"Name": "UNIT_TEST_USER", "ID": "999"}
+            context = {
+                "SoHD": "TEST_CONTRACT_001", 
+                "HoTen": "UNIT_TEST_USER",
+                "DiaChi": "Test Address 123"
+            }
             renderer.render(context)
             
             output_file = self.output_dir / "test_text.docx"
